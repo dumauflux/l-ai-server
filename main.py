@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 from flask import Flask, request, jsonify
 
@@ -8,30 +9,36 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 MODELO_IA = "openai/gpt-oss-120b"
 
-# Histórico por avatar na memória: { "avatar_id": [ ... ] }
-historico_conversas = {}
+# Sessao unificada da sala de atendimento
+sessao_sala = {
+    "historico": [],
+    "ultimo_acesso": time.time()
+}
 
-# BASE DE PERSONALIDADES DIRETA (Blindada contra erros de JSON)
 PERSONAGENS = {
     "doula": (
         "Voce e a Doula Baby Flux da Maternidade no Second Life, especialista em acolhimento, autocuidado e conexao familiar. "
         "Sua personalidade e doce, paciente, acolhedora, serena e respeitosa. "
+        "DINAMICA DE GRUPO NA SALA: "
+        "- Voce atende a gestante (mamae), seu parceiro/acompanhante (papai) e quaisquer familiares presentes (avos, tias, irmas, cunhadas, amigos). "
+        "- Sempre de atencao principal a mamae, mas envolva carinhosamente o parceiro e a rede de apoio presente. "
+        "- Se alguem novo falar na sala, de as boas-vindas e pergunte gentilmente qual o papel dessa pessoa na vida do bebe se ainda nao souber. "
         "Voce conduz a Terceira Consulta VIP de Doula e Spa Baby Flux seguindo as 11 etapas do roteiro: "
-        "1. Recepcao VIP calorosa dando as boas-vindas a experiencia exclusiva. "
-        "2. Anamnese acolhedora (pergunte como a mamae esta emocionalmente, cansaco, enjoos e apoio, uma coisa por vez). "
+        "1. Recepcao VIP calorosa dando as boas-vindas a gestante e a todos os presentes. "
+        "2. Anamnese acolhedora (pergunte como a mamae esta emocionalmente, cansaco, enjoos e como a familia tem apoiado). "
         "3. Spa exclusivo com cuidado facial e beleza simbolicos. "
         "4. Massagem suave simbolica (pergunte consentimento para pescoco, pernas ou apenas narracao). "
         "5. Meditacao guiada com respiracao suave e conexao com o bebe. "
         "6. Cartoes de carinho e autoestima. "
-        "7. Participacao carinhosa do acompanhante/papai. "
-        "8. Escrita de carta de amor ao bebe. "
+        "7. Participacao carinhosa do parceiro e da familia com mensagens de afeto e presenca. "
+        "8. Escrita de carta de amor ao bebe (o casal e a familia podem contribuir). "
         "9. Orientacoes emocionais para o parto e anotacao de duvidas para a equipe medica. "
-        "10. Carta de homenagem da doula a familia. "
-        "11. Despedida emocionante e convite para fotos. "
+        "10. Carta de homenagem da doula a todos da familia. "
+        "11. Despedida emocionante e convite para fotos de recordacao com todos. "
         "REGRAS OBRIGATORIAS: "
         "1. NUNCA use acentos graficos (nao use til, cedilha ou acentos nas palavras). Escreva tudo sem acentos para o chat do Second Life. "
-        "2. NUNCA mande tocar em paineis nem mande procurar Dumau ou Mabel. Voce mesma e a Doula e deve realizar a consulta agora. "
-        "3. Conduza uma etapa por vez com calma, em no maximo 2 a 3 frases por mensagem, e pergunte se a mamae esta pronta para a etapa. "
+        "2. NUNCA mande tocar em paineis nem mande procurar ninguem. Voce mesma e a Doula e conduz o atendimento agora. "
+        "3. Conduza uma etapa por vez com calma, em no maximo 2 a 3 frases por mensagem, e pergunte se estao prontos antes de avancar. "
         "4. Lembre que e uma experiencia de RPG acolhedor e nunca forneca diagnosticos medicos."
     ),
     "recepcionista": (
@@ -48,11 +55,11 @@ def home():
 
 @app.route("/chat", methods=["POST"])
 def chat():
+    global sessao_sala
     dados = request.get_json(force=True, silent=True)
     if not dados:
         return jsonify({"resposta": "Erro: Dados invalidos."}), 400
 
-    avatar_id = dados.get("avatar_id", "desconhecido")
     avatar_nome = dados.get("avatar_nome", "Visitante")
     mensagem_usuario = dados.get("mensagem", "").strip()
     id_personagem = dados.get("personagem", "doula").lower()
@@ -60,25 +67,34 @@ def chat():
     if not mensagem_usuario:
         return jsonify({"resposta": "Mensagem vazia."}), 400
 
-    # Comando para limpar histórico se necessário
-    if mensagem_usuario.lower() in ["/reset", "reiniciar", "novo atendimento"]:
-        historico_conversas[avatar_id] = []
-        return jsonify({"resposta": f"Atendimento reiniciado para {avatar_nome}. Pode comecar a consulta."}), 200
+    # Comando seguro e exclusivo para reiniciar a sala
+    if mensagem_usuario.lower() in ["/reiniciar", "/reset"]:
+        sessao_sala["historico"] = []
+        sessao_sala["ultimo_acesso"] = time.time()
+        return jsonify({"resposta": f"Sessao da sala reiniciada com sucesso. Doula pronta para novo atendimento."}), 200
 
-    # Seleciona o perfil correto
+    # Reset automatico apos 10 minutos sem interacao na sala
+    agora = time.time()
+    if agora - sessao_sala["ultimo_acesso"] > 600:
+        sessao_sala["historico"] = []
+    sessao_sala["ultimo_acesso"] = agora
+
     prompt_base = PERSONAGENS.get(id_personagem, PERSONAGENS["doula"])
-    prompt_sistema = f"{prompt_base} Voce esta atendendo agora o avatar chamado {avatar_nome}."
+    prompt_sistema = (
+        f"{prompt_base} "
+        "Voce esta no chat local do Second Life. As mensagens abaixo mostram quem falou no formato [Nome]: mensagem. "
+        "Converse de forma acolhedora com quem estiver presente, interagindo com o grupo de forma natural."
+    )
 
-    if avatar_id not in historico_conversas:
-        historico_conversas[avatar_id] = []
-
-    # Mantém as últimas 6 trocas de mensagem
-    if len(historico_conversas[avatar_id]) > 6:
-        historico_conversas[avatar_id] = historico_conversas[avatar_id][-6:]
+    # Mantem as ultimas 10 falas da sala para ter uma memoria ampla de grupo
+    if len(sessao_sala["historico"]) > 10:
+        sessao_sala["historico"] = sessao_sala["historico"][-10:]
 
     mensagens_para_ia = [{"role": "system", "content": prompt_sistema}]
-    mensagens_para_ia.extend(historico_conversas[avatar_id])
-    mensagens_para_ia.append({"role": "user", "content": mensagem_usuario})
+    mensagens_para_ia.extend(sessao_sala["historico"])
+    
+    fala_identificada = f"[{avatar_nome}]: {mensagem_usuario}"
+    mensagens_para_ia.append({"role": "user", "content": fala_identificada})
 
     payload = {
         "model": MODELO_IA,
@@ -98,8 +114,8 @@ def chat():
             resultado_json = resposta_ia.json()
             texto_gerado = resultado_json["choices"][0]["message"]["content"].strip()
 
-            historico_conversas[avatar_id].append({"role": "user", "content": mensagem_usuario})
-            historico_conversas[avatar_id].append({"role": "assistant", "content": texto_gerado})
+            sessao_sala["historico"].append({"role": "user", "content": fala_identificada})
+            sessao_sala["historico"].append({"role": "assistant", "content": texto_gerado})
 
             return jsonify({"resposta": texto_gerado}), 200
         else:

@@ -5,13 +5,11 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# Chave da API obtida das variáveis de ambiente do Render
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 MODELO_IA = "openai/gpt-oss-120b"
 
-# Dicionário para armazenar o histórico de conversa na memória
-# Formato: { "avatar_uuid": [ {"role": "user", "content": "..."}, {"role": "assistant", "content": "..."} ] }
+# Guarda histórico: { "avatar_id": [ {"role": "...", "content": "..."} ] }
 historico_conversas = {}
 
 def carregar_personagens():
@@ -35,30 +33,33 @@ def chat():
     avatar_id = dados.get("avatar_id", "desconhecido")
     avatar_nome = dados.get("avatar_nome", "Visitante")
     mensagem_usuario = dados.get("mensagem", "").strip()
-    id_personagem = dados.get("personagem", "recepcionista").lower()
+    id_personagem = dados.get("personagem", "doula").lower()
 
     if not mensagem_usuario:
         return jsonify({"resposta": "Nenhuma mensagem recebida."}), 400
 
+    # Comando para resetar a memória do visitante se desejar começar do zero
+    if mensagem_usuario.lower() in ["/reset", "reiniciar", "novo atendimento"]:
+        historico_conversas[avatar_id] = []
+        return jsonify({"resposta": f"Atendimento reiniciado com sucesso para {avatar_nome}."}), 200
+
     personagens = carregar_personagens()
-    perfil = personagens.get(id_personagem, personagens.get("recepcionista", {}))
+    perfil = personagens.get(id_personagem, personagens.get("doula", {}))
 
     prompt_sistema = (
         f"{perfil.get('personalidade', '')} "
         f"{perfil.get('conhecimentos', '')} "
         f"{perfil.get('regras', '')} "
-        f"O avatar com quem voce esta falando agora se chama {avatar_nome}."
+        f"Voce esta falando com {avatar_nome}. Conduza a consulta ativamente, com carinho, fazendo as perguntas da etapa atual."
     )
 
-    # Inicializa o histórico para novos visitantes
     if avatar_id not in historico_conversas:
         historico_conversas[avatar_id] = []
 
-    # Mantém apenas as últimas 6 mensagens trocadas para não estourar o contexto
+    # Mantém as últimas 6 mensagens de histórico
     if len(historico_conversas[avatar_id]) > 6:
         historico_conversas[avatar_id] = historico_conversas[avatar_id][-6:]
 
-    # Monta a lista completa de mensagens para a IA
     mensagens_para_ia = [{"role": "system", "content": prompt_sistema}]
     mensagens_para_ia.extend(historico_conversas[avatar_id])
     mensagens_para_ia.append({"role": "user", "content": mensagem_usuario})
@@ -76,12 +77,11 @@ def chat():
     }
 
     try:
-        resposta_ia = requests.post(GROQ_URL, json=payload, headers=headers, timeout=12)
+        resposta_ia = requests.post(GROQ_URL, json=payload, headers=headers, timeout=15)
         if resposta_ia.status_code == 200:
             resultado_json = resposta_ia.json()
             texto_gerado = resultado_json["choices"][0]["message"]["content"].strip()
 
-            # Salva no histórico daquela pessoa
             historico_conversas[avatar_id].append({"role": "user", "content": mensagem_usuario})
             historico_conversas[avatar_id].append({"role": "assistant", "content": texto_gerado})
 
@@ -89,7 +89,7 @@ def chat():
         else:
             return jsonify({"resposta": f"Erro na IA: Codigo {resposta_ia.status_code}"}), 500
     except requests.exceptions.Timeout:
-        return jsonify({"resposta": "Desculpe, o processamento demorou mais do que o esperado."}), 504
+        return jsonify({"resposta": "Desculpe, a resposta demorou mais que o esperado."}), 504
     except Exception as e:
         return jsonify({"resposta": f"Erro interno: {str(e)}"}), 500
 

@@ -22,7 +22,11 @@ def remover_acentos(texto):
 
 CONHECIMENTO_BABY_FLUX = (
     "CONHECIMENTO INSTITUCIONAL E CATALOGO BABY FLUX:\n"
-    "- Historia: Criada em 2010 por DUMAU Flux no Second Life, especializada em sistemas de gravidez, barrigas e roleplay maternal. Possui loja oficial in-world e no Marketplace.\n"
+    "- Historia: Criada em 2010 por DUMAU Flux no Second Life, especializada em sistemas de gravidez, barrigas e roleplay maternal. Loja oficial in-world e Marketplace.\n"
+    "- DISTINCAO CRITICA ENTRE OS SISTEMAS:\n"
+    "  * HUD Feminina (L$ 99): E o sistema de fertilidade usado apenas para engravidar (receber o convite ou inseminacao). Quando engravida, exibe a palavra 'Gravida'.\n"
+    "  * Barriga Interativa: Objeto visual que simula o ciclo gestacional, crescimento do bebe em 5 fases e interacoes de roleplay. E um item a parte e reutilizavel.\n"
+    "  * A Limpeza de Script NUNCA apaga nem altera a barriga interativa. Ela atua exclusivamente na HUD feminina, fazendo sumir a palavra 'Gravida' para permitir uma nova gestacao.\n"
     "- Precos e Sistemas: HUD engravidar masc L$ 249; HUD fem L$ 99; Teste gravidez L$ 99; Limpeza de script L$ 180; Inseminacao L$ 249; Tatuagens de barriga L$ 89.\n"
     "- Barrigas Interativas: 1 bebe (L$ 499), Gemeos (L$ 799), Trigemeos (L$ 1499), Quadrigemeos (L$ 2599, apenas em portugues). Versoes ate 3 bebes tem PT, EN e ES. Fetos ultrarrealistas em 5 estagios.\n"
     "- Caracteristicas da Barriga: Apenas 1 script (super leve), nao perde configuracoes ao desanexar, comidas e vitaminas gratuitas no menu da barriga, bebe nao morre, frases personalizaveis via notecard 'textos'. Permite ajustar duracao da gravidez.\n"
@@ -30,8 +34,8 @@ CONHECIMENTO_BABY_FLUX = (
     "- PROCEDIMENTOS EXATOS:\n"
     "  * Engravidar: Casal proximo, mulher com HUD feminina e homem com HUD masculina anexadas. Homem clica na HUD masculina e convida a parceira.\n"
     "  * Teste de gravidez: Comprar na loja/site, anexar ao avatar JUNTO com a HUD feminina. Clicar no teste; ele se comunica com a HUD feminina e confirma no chat.\n"
-    "  * Limpeza de script (L$ 180): E uma HUD comprada na loja. A cliente anexa a HUD de limpeza JUNTO com a HUD feminina e clica na HUD de limpeza. O procedimento roda automaticamente, a palavra Gravida desaparece da HUD feminina e o sistema fica liberado para uma nova gestacao sem precisar recomprar produtos reutilizaveis. O procedimento tambem pode ser realizado na clinica com auxilio da equipe medica.\n"
-    "  * Regra de Atendimento: NUNCA invente cliques de botao direito, menus ou recursos inexistentes. Explique exatamente os passos listados. Se for duvida tecnica ou procedimento pendente, oriente a falar com a equipe responsavel ou com DUMAU Flux."
+    "  * Limpeza de script (L$ 180): E uma HUD comprada na loja. A cliente anexa a HUD de limpeza JUNTO com a HUD feminina e clica na HUD de limpeza. O procedimento roda automaticamente, a palavra Gravida desaparece da HUD feminina e o sistema fica liberado para uma nova gestacao sem precisar recomprar nada. O procedimento tambem pode ser realizado na clinica com auxilio da equipe medica.\n"
+    "  * Regra de Suporte: NUNCA invente cliques de botao direito ou menus inexistentes. Explique os passos em ordem conforme listado acima. Duvidas tecnicas adicionais devem ser encaminhadas a DUMAU Flux."
 )
 
 PERSONAGENS = {
@@ -59,7 +63,7 @@ PERSONAGENS = {
         "2. NUNCA DEIXE FRASES INCOMPLETAS: Conclua sempre seu pensamento com calma em frases fechadas com ponto final (2 a 3 frases por mensagem). "
         "3. NUNCA use acentos graficos (nao use til, cedilha ou acentos). "
         "4. NUNCA inclua seu proprio nome, tags ou prefixos como [Baby Flux] ou [Doula] no inicio da fala. "
-        "5. NAO SEJA REPETITIVA: Nunca repita saudações ou perguntas já feitas no histórico."
+        "5. NAO SEJA REPETITIVA: Nunca repita saudacoes ou perguntas ja feitas no historico."
     ),
     "recepcionista": (
         "Voce e a Recepcionista Virtual oficial da Maternidade Baby Flux no Second Life. "
@@ -92,13 +96,11 @@ def chat():
     if not mensagem_usuario:
         return jsonify({"resposta": ""}), 400
 
-    # Comando seguro para reiniciar a sessao
     if mensagem_usuario.lower() in ["/reiniciar", "/reset"]:
         sessao_sala["historico"] = []
         sessao_sala["ultimo_acesso"] = time.time()
-        return jsonify({"resposta": f"Sessao da sala reiniciada com sucesso. Personagem pronta para novo atendimento."}), 200
+        return jsonify({"resposta": "Sessao da sala reiniciada com sucesso. Personagem pronta para novo atendimento."}), 200
 
-    # Memoria de 1 hora de inatividade
     agora = time.time()
     if agora - sessao_sala["ultimo_acesso"] > 3600:
         sessao_sala["historico"] = []
@@ -138,7 +140,6 @@ def chat():
             resultado_json = resposta_ia.json()
             texto_gerado = resultado_json["choices"][0]["message"]["content"].strip()
             
-            # Se for a Doula e ela decidir que deve ficar em silencio
             if "[silencio]" in texto_gerado.lower():
                 sessao_sala["historico"].append({"role": "user", "content": fala_identificada})
                 return jsonify({"resposta": ""}), 200
